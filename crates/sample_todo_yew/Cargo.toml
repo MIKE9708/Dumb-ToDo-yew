@@ -1,0 +1,15 @@
+[package]
+name = "sample_todo_yew"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+common = { path = "../common" }
+chrono = "0.4.42"
+yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
+wasm-logger = "0.2.0"
+gloo-net = "0.2"
+serde_json = { workspace = true }
+wasm-bindgen-futures = "0.4.56"
+log = { workspace = true }
+web-sys = "0.3.83"

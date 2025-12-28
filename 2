@@ -1,0 +1,149 @@
+use common::ToDo;
+use sample_todo_yew::todo::{self, ActionType, Msg, TaskError, delete_todo, get_todo};
+use sample_todo_yew::todo::{ToDoListProps, ToDoState};
+use std::rc::Rc;
+use todo::Task;
+use yew::prelude::*;
+
+fn on_delete_action(todo: ToDo, reducer: UseReducerHandle<ToDoState>) {
+    let todo_async = todo.clone();
+    let reducer_async = reducer.clone();
+
+    reducer.dispatch(Msg::OnGoing(Task::Delete(todo.clone())));
+    wasm_bindgen_futures::spawn_local(async move {
+        match delete_todo(todo_async.clone()).await {
+            Ok(_) => reducer_async.dispatch(Msg::Done(Task::Delete(todo_async.clone()))),
+            Err(_) => reducer_async.dispatch(Msg::Error(TaskError::DeleteError)),
+        }
+    });
+}
+
+#[function_component(ToDoList)]
+fn todo_list(ToDoListProps { state }: &ToDoListProps) -> Html {
+    if state.loading {
+        return html! {
+            <div>
+                <h3>{"Loading ..."}</h3>
+            </div>
+        };
+    } else if state.error.is_some() {
+        return html! {
+            <div>
+                <h3>{state.error.clone().unwrap_or("".to_string())}</h3>
+            </div>
+        };
+    } else {
+        return html! {
+            <div>
+                <table>
+                        <tbody>
+                            {for state.todos.iter().map(|todo| {
+                            let reducer = state.clone();
+                            let todo_on_click = todo.clone();
+                            html!{
+                            <tr>
+                                <td>{todo.todo_date.clone()}</td>
+                                <td>{todo.todo_info.clone()}</td>
+                                <button onclick={move |_| {
+                                    on_delete_action(todo_on_click.clone(), reducer.clone());
+                                }}>
+                                    {"Remove"}
+                                </button>
+                                <td><button>{"Update"}</button></td>
+                            </tr>
+                        }})}
+                        </tbody>
+                </table>
+                </div>
+        };
+    }
+}
+
+fn handle_add_action(todo: ToDo, reducer: UseReducerHandle<ToDoState>, action_type: ActionType) {
+    let task = match action_type {
+        ActionType::Delete => Task::Delete(todo.clone()),
+        ActionType::Add => Task::Add(todo.clone()),
+        ActionType::Update => Task::Update(todo.clone()),
+    };
+    let todo_async = todo.clone();
+    let reducer_async = reducer.clone();
+
+    reducer.dispatch(Msg::OnGoing(task));
+    wasm_bindgen_futures::spawn_local(async move {
+        match delete_todo(todo_async.clone()).await {
+            Ok(_) => reducer_async.dispatch(Msg::Done(task)),
+            Err(_) => reducer_async.dispatch(Msg::Error(TaskError::DeleteError)),
+        }
+    });
+}
+
+#[function_component(AddToDoNote)]
+fn add_todo(data: &ToDo) -> Html {
+    html! {
+        <div>
+            <label>{"Note"}</label>
+            <input type={"text"} minlength={"4"}/>
+            <div>
+                <button>{"Add"}</button>
+            </div>
+        </div>
+    }
+}
+
+#[function_component(UpdateToDo)]
+fn update_todo(data: &ToDo) -> Html {
+    html! {
+        <div>
+            <label>{"Note"}</label>
+            <input type={"text"} minlength={"4"} value={data.todo_info.clone()}/>
+            <div>
+                <button>{"Add"}</button>
+            </div>
+        </div>
+    }
+}
+
+#[function_component(App)]
+fn app() -> Html {
+    let reducer = use_reducer(|| ToDoState {
+        todos: Rc::new(vec![]),
+        loading: true,
+        error: None,
+    });
+
+    {
+        let reducer = reducer.clone();
+        use_effect_with((), move |_| {
+            reducer.dispatch(Msg::OnGoing(Task::Loaded(vec![])));
+            wasm_bindgen_futures::spawn_local(async move {
+                match get_todo().await {
+                    Ok(todos_list_props) => {
+                        reducer.dispatch(Msg::Done(Task::Loaded(todos_list_props)))
+                    }
+                    Err(_) => reducer.dispatch(Msg::Error(TaskError::LoadError)),
+                }
+            });
+            || ()
+        });
+    }
+
+    html! {
+        <>
+            <h1> {"ToDo App"} </h1>
+            <div>
+                <ToDoList state={reducer.clone()} />
+            </div>
+
+            <div>
+                <button>{"Add"}</button>
+            </div>
+            // {for details}
+        </>
+
+    }
+}
+
+fn main() {
+    wasm_logger::init(wasm_logger::Config::default());
+    yew::Renderer::<App>::new().render();
+}
